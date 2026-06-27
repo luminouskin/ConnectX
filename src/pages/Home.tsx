@@ -1,13 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MessageCircle,
+  Users,
+  Sticker,
+  Settings,
+  LogOut,
+  Search,
+  ChevronRight,
+} from "lucide-react";
 
 export default function Home() {
   const [profile, setProfile] = useState<any>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeNav, setActiveNav] = useState("/");
   const navigate = useNavigate();
+  const reloadTimer = useRef<any>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -48,12 +61,23 @@ export default function Home() {
     loadPendingRequestCount(session.user.id);
 
     const channel = supabase
-      .channel(`friend-requests-${session.user.id}`)
-      .on(
-        "postgres_changes",
+      .channel(`home-updates-${session.user.id}`)
+      .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "friendships", filter: `receiver_id=eq.${session.user.id}` },
+        () => { loadPendingRequestCount(session.user.id); }
+      )
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
         () => {
-          loadPendingRequestCount(session.user.id);
+          if (reloadTimer.current) clearTimeout(reloadTimer.current);
+          reloadTimer.current = setTimeout(() => loadConversations(session.user.id), 800);
+        }
+      )
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "conversation_members" },
+        () => {
+          if (reloadTimer.current) clearTimeout(reloadTimer.current);
+          reloadTimer.current = setTimeout(() => loadConversations(session.user.id), 800);
         }
       )
       .subscribe();
@@ -67,7 +91,6 @@ export default function Home() {
       .select("*", { count: "exact", head: true })
       .eq("receiver_id", userId)
       .eq("status", "pending");
-
     setPendingRequestCount(count || 0);
   };
 
@@ -100,6 +123,7 @@ export default function Home() {
           .from("messages")
           .select("*")
           .eq("conversation_id", convoId)
+          .eq("deleted", false)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -109,6 +133,7 @@ export default function Home() {
           .from("messages")
           .select("*", { count: "exact", head: true })
           .eq("conversation_id", convoId)
+          .eq("deleted", false)
           .neq("sender_id", userId)
           .gt("created_at", lastReadAt);
 
@@ -136,146 +161,379 @@ export default function Home() {
   };
 
   const navItems = [
-    { icon: "💬", label: "Chats", path: "/", badge: 0 },
-    { icon: "👥", label: "Friends", path: "/friends", badge: pendingRequestCount },
-    { icon: "🖼️", label: "Stickers", path: "/stickers", badge: 0 },
-    { icon: "⚙️", label: "Settings", path: "/profile", badge: 0 },
+    { icon: MessageCircle, label: "Chats", path: "/", badge: 0 },
+    { icon: Users, label: "Friends", path: "/friends", badge: pendingRequestCount },
+    { icon: Sticker, label: "Stickers", path: "/stickers", badge: 0 },
+    { icon: Settings, label: "Settings", path: "/profile", badge: 0 },
   ];
 
+  const filteredConversations = conversations.filter((c) =>
+    c.otherUser?.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.otherUser?.username?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (days === 1) return "Yesterday";
+    if (days < 7) return date.toLocaleDateString([], { weekday: "short" });
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
+  const getInitials = (name: string) =>
+    name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+
   return (
-    <div style={{ height: "100vh", background: "#0f172a", color: "white", display: "flex" }}>
-      {/* Sidebar */}
-      <div style={{ width: 280, background: "#1e293b", padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div
-          onClick={() => navigate("/profile")}
-          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px", background: "#0f172a", borderRadius: 10, cursor: "pointer" }}
-        >
-          {profile?.avatar_url && (
-            <img src={profile.avatar_url} alt="avatar" style={{ width: 40, height: 40, borderRadius: "50%", border: "2px solid #06b6d4" }} />
-          )}
-          <div>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{profile?.display_name}</p>
-            <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>@{profile?.username}</p>
+    <div style={{
+      height: "100vh",
+      background: "#080B14",
+      color: "white",
+      display: "flex",
+      fontFamily: "'Inter', sans-serif",
+      overflow: "hidden",
+      position: "relative",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(30px,20px)} }
+        @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-25px,-15px)} }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.7;transform:scale(0.85)} }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(124,110,250,0.2); border-radius: 99px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(124,110,250,0.4); }
+        input::placeholder { color: #374151; }
+        .nav-btn { transition: all 0.2s ease; }
+        .nav-btn:hover { background: rgba(124,110,250,0.08) !important; }
+        .chat-row { transition: background 0.18s ease; }
+        .chat-row:hover { background: rgba(124,110,250,0.06) !important; }
+        .logout-btn { transition: all 0.2s ease; }
+        .logout-btn:hover { background: rgba(239,68,68,0.12) !important; color: #F87171 !important; }
+        .search-wrap:focus-within { border-color: rgba(124,110,250,0.5) !important; box-shadow: 0 0 0 3px rgba(124,110,250,0.1) !important; }
+      `}</style>
+
+      {/* Ambient orbs */}
+      <div style={{ position:"absolute", width:600, height:600, borderRadius:"50%", background:"radial-gradient(circle, rgba(124,110,250,0.07) 0%, transparent 70%)", top:"-150px", left:"-50px", animation:"drift1 14s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"absolute", width:400, height:400, borderRadius:"50%", background:"radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)", bottom:"-100px", right:"30%", animation:"drift2 18s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
+
+      {/* ── SIDEBAR ── */}
+      <motion.div
+        initial={{ x: -40, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          width: 260,
+          background: "rgba(13,17,23,0.9)",
+          backdropFilter: "blur(20px)",
+          borderRight: "1px solid rgba(124,110,250,0.1)",
+          display: "flex",
+          flexDirection: "column",
+          padding: "20px 12px",
+          gap: 4,
+          position: "relative",
+          zIndex: 1,
+          flexShrink: 0,
+        }}
+      >
+        {/* Logo */}
+        <div style={{ padding: "8px 10px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 32, height: 32,
+            background: "linear-gradient(135deg, #7C6EFA, #A78BFA)",
+            borderRadius: 10,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(124,110,250,0.3)",
+            flexShrink: 0,
+          }}>
+            <MessageCircle size={16} color="white" fill="white" />
           </div>
+          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px" }}>ConnectX</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
-          <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0 4px", textTransform: "uppercase", letterSpacing: 1 }}>Menu</p>
-          {navItems.map((item) => (
-            <button
+        {/* Profile card */}
+        <motion.div
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={() => navigate("/profile")}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 12px",
+            background: "rgba(124,110,250,0.08)",
+            border: "1px solid rgba(124,110,250,0.12)",
+            borderRadius: 12,
+            cursor: "pointer",
+            marginBottom: 8,
+          }}
+        >
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} alt="avatar" style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(124,110,250,0.4)", flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+              {getInitials(profile?.display_name || "")}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 13, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{profile?.display_name || "..."}</p>
+            <p style={{ margin: 0, color: "#6B7280", fontSize: 11 }}>@{profile?.username || "..."}</p>
+          </div>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", animation: "pulse-dot 2.5s ease-in-out infinite", flexShrink: 0 }} />
+        </motion.div>
+
+        {/* Nav label */}
+        <p style={{ color: "#374151", fontSize: 10, fontWeight: 600, letterSpacing: "1px", textTransform: "uppercase", padding: "4px 12px 2px", margin: 0 }}>Menu</p>
+
+        {/* Nav items */}
+        {navItems.map((item, i) => {
+          const Icon = item.icon;
+          const isActive = activeNav === item.path;
+          return (
+            <motion.button
               key={item.label}
-              onClick={() => navigate(item.path)}
-              style={{ padding: "10px 14px", background: "transparent", color: "white", border: "none", borderRadius: 8, cursor: "pointer", textAlign: "left", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 + i * 0.07, duration: 0.35 }}
+              onClick={() => { setActiveNav(item.path); navigate(item.path); }}
+              className="nav-btn"
+              style={{
+                padding: "10px 12px",
+                background: isActive ? "rgba(124,110,250,0.14)" : "transparent",
+                color: isActive ? "#A78BFA" : "#9CA3AF",
+                border: isActive ? "1px solid rgba(124,110,250,0.2)" : "1px solid transparent",
+                borderRadius: 10,
+                cursor: "pointer",
+                textAlign: "left",
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 400,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontFamily: "'Inter', sans-serif",
+                justifyContent: "space-between",
+              }}
             >
-              <span>{item.icon} {item.label}</span>
+              <span style={{ display:"flex", alignItems:"center", gap: 10 }}>
+                <Icon size={16} />
+                {item.label}
+              </span>
               {item.badge > 0 && (
-                <span
-                  style={{
-                    background: "#ef4444",
-                    color: "white",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    borderRadius: 999,
-                    padding: "2px 7px",
-                    minWidth: 18,
-                    textAlign: "center",
-                  }}
-                >
+                <span style={{ background: "#7C6EFA", color: "white", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 6px", minWidth: 16, textAlign: "center" }}>
                   {item.badge}
                 </span>
               )}
-            </button>
-          ))}
-        </div>
+            </motion.button>
+          );
+        })}
 
-        <button onClick={logout} style={{ padding: "10px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: "pointer" }}>
-          Logout
+        <div style={{ flex: 1 }} />
+
+        {/* Logout */}
+        <button
+          onClick={logout}
+          className="logout-btn"
+          style={{
+            padding: "10px 12px",
+            background: "transparent",
+            color: "#6B7280",
+            border: "1px solid rgba(239,68,68,0.1)",
+            borderRadius: 10,
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+            fontFamily: "'Inter', sans-serif",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <LogOut size={15} />
+          Sign out
         </button>
-      </div>
+      </motion.div>
 
-      {/* Chats list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid #1e293b" }}>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Chats</h1>
-        </div>
+      {/* ── MAIN PANEL ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1 }}>
 
-        {loadingChats && (
-          <p style={{ color: "#64748b", textAlign: "left", paddingLeft: 24, marginTop: 40 }}>Loading chats...</p>
-        )}
-
-        {!loadingChats && conversations.length === 0 && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", height: "70%", gap: 12, color: "#64748b", paddingLeft: 24 }}>
-            <p style={{ fontSize: 48, margin: 0 }}>💬</p>
-            <p style={{ fontSize: 16, margin: 0 }}>No chats yet</p>
-            <button
-              onClick={() => navigate("/friends")}
-              style={{ padding: "8px 18px", background: "#2563eb", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, marginTop: 8 }}
-            >
-              Find Friends to Message
-            </button>
-          </div>
-        )}
-
-        {!loadingChats &&
-          conversations.map((c) => (
-            <div
-              key={c.conversationId}
-              onClick={() => navigate(`/chat/${c.conversationId}`)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "14px 24px",
-                cursor: "pointer",
-                borderBottom: "1px solid #1e293b",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#1e293b")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              {c.otherUser?.avatar_url && (
-                <img src={c.otherUser.avatar_url} style={{ width: 48, height: 48, borderRadius: "50%", flexShrink: 0 }} />
-              )}
-              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>{c.otherUser?.display_name || "Unknown"}</p>
-                <p
-                  style={{
-                    margin: 0,
-                    color: c.unreadCount > 0 ? "#e2e8f0" : "#94a3b8",
-                    fontWeight: c.unreadCount > 0 ? 600 : 400,
-                    fontSize: 13,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {c.lastMessage?.content || "No messages yet"}
-                </p>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-                {c.lastMessage?.created_at && (
-                  <p style={{ margin: 0, color: "#64748b", fontSize: 11 }}>
-                    {new Date(c.lastMessage.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}
-                  </p>
-                )}
-                {c.unreadCount > 0 && (
-                  <span
-                    style={{
-                      background: "#2563eb",
-                      color: "white",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      borderRadius: 999,
-                      padding: "2px 7px",
-                      minWidth: 18,
-                      textAlign: "center",
-                    }}
-                  >
-                    {c.unreadCount}
-                  </span>
-                )}
-              </div>
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          style={{
+            padding: "16px 16px 12px",
+            borderBottom: "1px solid rgba(124,110,250,0.08)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            background: "rgba(8,11,20,0.6)",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.4px" }}>Messages</h1>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#4B5563" }}>
+                {conversations.length > 0 ? `${conversations.length} conversation${conversations.length !== 1 ? "s" : ""}` : "No conversations yet"}
+              </p>
             </div>
-          ))}
+          </div>
+
+          {/* Search */}
+          <div
+            className="search-wrap"
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: "rgba(13,17,23,0.8)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 10, padding: "9px 14px",
+              transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+            }}
+          >
+            <Search size={14} color="#4B5563" style={{ flexShrink: 0 }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search conversations..."
+              style={{ background:"transparent", border:"none", color:"white", fontSize:13, outline:"none", flex:1, fontFamily:"'Inter',sans-serif" }}
+            />
+          </div>
+        </motion.div>
+
+        {/* Conversations list */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+
+          {/* Loading */}
+          {loadingChats && (
+            <div style={{ display:"flex", flexDirection:"column", gap:1, padding:"8px 0" }}>
+              {[1,2,3,4].map((i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px" }}>
+                  <div style={{ width:48, height:48, borderRadius:"50%", background:"rgba(255,255,255,0.04)", flexShrink:0, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", gap:8 }}>
+                    <div style={{ height:13, width:"40%", background:"rgba(255,255,255,0.04)", borderRadius:6, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
+                    <div style={{ height:11, width:"65%", background:"rgba(255,255,255,0.03)", borderRadius:6, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loadingChats && conversations.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"70%", gap:12, padding: "0 24px" }}
+            >
+              <div style={{ width:64, height:64, borderRadius:20, background:"rgba(124,110,250,0.1)", border:"1px solid rgba(124,110,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:4 }}>
+                <MessageCircle size={28} color="#7C6EFA" />
+              </div>
+              <p style={{ fontSize:16, fontWeight:600, margin:0, color:"white" }}>No messages yet</p>
+              <p style={{ fontSize:13, color:"#4B5563", margin:0, textAlign:"center", lineHeight:1.6 }}>Add friends and start your first conversation</p>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate("/friends")}
+                style={{ padding:"10px 20px", background:"linear-gradient(135deg,#7C6EFA,#A78BFA)", color:"white", border:"none", borderRadius:10, cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"'Inter',sans-serif", marginTop:4, boxShadow:"0 4px 16px rgba(124,110,250,0.3)", display:"flex", alignItems:"center", gap:8 }}
+              >
+                <Users size={14} />
+                Find friends
+              </motion.button>
+            </motion.div>
+          )}
+
+          {/* Chat rows */}
+          <AnimatePresence>
+            {!loadingChats && filteredConversations.map((c, i) => (
+              <motion.div
+                key={c.conversationId}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05, duration: 0.3 }}
+                onClick={() => {
+                  setConversations((prev) =>
+                    prev.map((conv) =>
+                      conv.conversationId === c.conversationId
+                        ? { ...conv, unreadCount: 0 }
+                        : conv
+                    )
+                  );
+                  navigate(`/chat/${c.conversationId}`);
+                }}
+                className="chat-row"
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "11px 16px",
+                  cursor: "pointer",
+                  borderBottom: "1px solid rgba(255,255,255,0.03)",
+                  position: "relative",
+                }}
+              >
+                {/* Avatar */}
+                <div style={{ position:"relative", flexShrink:0 }}>
+                  {c.otherUser?.avatar_url ? (
+                    <img src={c.otherUser.avatar_url} style={{ width:48, height:48, borderRadius:"50%", display:"block" }} />
+                  ) : (
+                    <div style={{ width:48, height:48, borderRadius:"50%", background:"linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:600 }}>
+                      {getInitials(c.otherUser?.display_name || "?")}
+                    </div>
+                  )}
+                  <div style={{ position:"absolute", bottom:1, right:1, width:10, height:10, borderRadius:"50%", background:"#34D399", border:"2px solid #080B14" }} />
+                </div>
+
+                {/* Text */}
+                <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
+                  <p style={{ margin:"0 0 3px", fontWeight: c.unreadCount > 0 ? 700 : 500, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textAlign:"left" }}>
+                    {c.otherUser?.display_name || "Unknown"}
+                  </p>
+                  <p style={{
+                    margin:0,
+                    color: c.unreadCount > 0 ? "#D1D5DB" : "#4B5563",
+                    fontWeight: c.unreadCount > 0 ? 500 : 400,
+                    fontSize:12,
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                    textAlign:"left",
+                  }}>
+                    {c.lastMessage ? (
+                      c.lastMessage.type === "sticker" ? "🖼️ Sticker" : c.lastMessage.content
+                    ) : (
+                      "No messages yet"
+                    )}
+                  </p>
+                </div>
+
+                {/* Right side */}
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0 }}>
+                  {c.lastMessage?.created_at && (
+                    <p style={{ margin:0, color: c.unreadCount > 0 ? "#7C6EFA" : "#374151", fontSize:11, fontWeight: c.unreadCount > 0 ? 600 : 400 }}>
+                      {formatTime(c.lastMessage.created_at)}
+                    </p>
+                  )}
+                  {c.unreadCount > 0 ? (
+                    <span style={{ background:"linear-gradient(135deg,#7C6EFA,#A78BFA)", color:"white", fontSize:10, fontWeight:700, borderRadius:999, padding:"2px 7px", minWidth:18, textAlign:"center", boxShadow:"0 2px 8px rgba(124,110,250,0.4)" }}>
+                      {c.unreadCount}
+                    </span>
+                  ) : (
+                    <ChevronRight size={13} color="#1F2937" />
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Search no results */}
+          {!loadingChats && searchQuery && filteredConversations.length === 0 && (
+            <motion.div
+              initial={{ opacity:0 }}
+              animate={{ opacity:1 }}
+              style={{ padding:"40px 24px", textAlign:"center", color:"#374151", fontSize:13 }}
+            >
+              No conversations matching "{searchQuery}"
+            </motion.div>
+          )}
+        </div>
       </div>
     </div>
   );
