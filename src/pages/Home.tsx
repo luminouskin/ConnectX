@@ -19,8 +19,15 @@ export default function Home() {
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeNav, setActiveNav] = useState("/");
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const navigate = useNavigate();
   const reloadTimer = useRef<any>(null);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -37,14 +44,30 @@ export default function Home() {
 
     setup();
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) loadConversations(session.user.id);
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       isActive = false;
       if (channel) {
         supabase.removeChannel(channel);
         channel = null;
       }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) loadConversations(session.user.id);
+    });
+  }, [navigate]);
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -123,7 +146,6 @@ export default function Home() {
           .from("messages")
           .select("*")
           .eq("conversation_id", convoId)
-          .eq("deleted", false)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -133,7 +155,6 @@ export default function Home() {
           .from("messages")
           .select("*", { count: "exact", head: true })
           .eq("conversation_id", convoId)
-          .eq("deleted", false)
           .neq("sender_id", userId)
           .gt("created_at", lastReadAt);
 
@@ -192,6 +213,7 @@ export default function Home() {
       background: "#080B14",
       color: "white",
       display: "flex",
+      flexDirection: isMobile ? "column" : "row",
       fontFamily: "'Inter', sans-serif",
       overflow: "hidden",
       position: "relative",
@@ -213,148 +235,154 @@ export default function Home() {
         .logout-btn { transition: all 0.2s ease; }
         .logout-btn:hover { background: rgba(239,68,68,0.12) !important; color: #F87171 !important; }
         .search-wrap:focus-within { border-color: rgba(124,110,250,0.5) !important; box-shadow: 0 0 0 3px rgba(124,110,250,0.1) !important; }
+        .bottom-nav-btn { transition: all 0.2s ease; }
+        @media (max-width: 480px) {
+          .header-title { font-size: 18px !important; }
+        }
       `}</style>
 
       {/* Ambient orbs */}
-      <div style={{ position:"absolute", width:600, height:600, borderRadius:"50%", background:"radial-gradient(circle, rgba(124,110,250,0.07) 0%, transparent 70%)", top:"-150px", left:"-50px", animation:"drift1 14s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
-      <div style={{ position:"absolute", width:400, height:400, borderRadius:"50%", background:"radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)", bottom:"-100px", right:"30%", animation:"drift2 18s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"absolute", width: isMobile ? 350 : 600, height: isMobile ? 350 : 600, borderRadius:"50%", background:"radial-gradient(circle, rgba(124,110,250,0.07) 0%, transparent 70%)", top:"-150px", left:"-50px", animation:"drift1 14s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"absolute", width: isMobile ? 240 : 400, height: isMobile ? 240 : 400, borderRadius:"50%", background:"radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)", bottom:"-100px", right:"10%", animation:"drift2 18s ease-in-out infinite", pointerEvents:"none", zIndex:0 }} />
 
-      {/* ── SIDEBAR ── */}
-      <motion.div
-        initial={{ x: -40, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        style={{
-          width: 260,
-          background: "rgba(13,17,23,0.9)",
-          backdropFilter: "blur(20px)",
-          borderRight: "1px solid rgba(124,110,250,0.1)",
-          display: "flex",
-          flexDirection: "column",
-          padding: "20px 12px",
-          gap: 4,
-          position: "relative",
-          zIndex: 1,
-          flexShrink: 0,
-        }}
-      >
-        {/* Logo */}
-        <div style={{ padding: "8px 10px 20px", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 32, height: 32,
-            background: "linear-gradient(135deg, #7C6EFA, #A78BFA)",
-            borderRadius: 10,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 4px 12px rgba(124,110,250,0.3)",
-            flexShrink: 0,
-          }}>
-            <MessageCircle size={16} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px" }}>ConnectX</span>
-        </div>
-
-        {/* Profile card */}
+      {/* ── DESKTOP SIDEBAR ── */}
+      {!isMobile && (
         <motion.div
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.99 }}
-          onClick={() => navigate("/profile")}
+          initial={{ x: -40, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px",
-            background: "rgba(124,110,250,0.08)",
-            border: "1px solid rgba(124,110,250,0.12)",
-            borderRadius: 12,
-            cursor: "pointer",
-            marginBottom: 8,
-          }}
-        >
-          {profile?.avatar_url ? (
-            <img src={profile.avatar_url} alt="avatar" style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(124,110,250,0.4)", flexShrink: 0 }} />
-          ) : (
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-              {getInitials(profile?.display_name || "")}
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ margin: 0, fontWeight: 600, fontSize: 13, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{profile?.display_name || "..."}</p>
-            <p style={{ margin: 0, color: "#6B7280", fontSize: 11 }}>@{profile?.username || "..."}</p>
-          </div>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", animation: "pulse-dot 2.5s ease-in-out infinite", flexShrink: 0 }} />
-        </motion.div>
-
-        {/* Nav label */}
-        <p style={{ color: "#374151", fontSize: 10, fontWeight: 600, letterSpacing: "1px", textTransform: "uppercase", padding: "4px 12px 2px", margin: 0 }}>Menu</p>
-
-        {/* Nav items */}
-        {navItems.map((item, i) => {
-          const Icon = item.icon;
-          const isActive = activeNav === item.path;
-          return (
-            <motion.button
-              key={item.label}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 + i * 0.07, duration: 0.35 }}
-              onClick={() => { setActiveNav(item.path); navigate(item.path); }}
-              className="nav-btn"
-              style={{
-                padding: "10px 12px",
-                background: isActive ? "rgba(124,110,250,0.14)" : "transparent",
-                color: isActive ? "#A78BFA" : "#9CA3AF",
-                border: isActive ? "1px solid rgba(124,110,250,0.2)" : "1px solid transparent",
-                borderRadius: 10,
-                cursor: "pointer",
-                textAlign: "left",
-                fontSize: 13,
-                fontWeight: isActive ? 600 : 400,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontFamily: "'Inter', sans-serif",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ display:"flex", alignItems:"center", gap: 10 }}>
-                <Icon size={16} />
-                {item.label}
-              </span>
-              {item.badge > 0 && (
-                <span style={{ background: "#7C6EFA", color: "white", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 6px", minWidth: 16, textAlign: "center" }}>
-                  {item.badge}
-                </span>
-              )}
-            </motion.button>
-          );
-        })}
-
-        <div style={{ flex: 1 }} />
-
-        {/* Logout */}
-        <button
-          onClick={logout}
-          className="logout-btn"
-          style={{
-            padding: "10px 12px",
-            background: "transparent",
-            color: "#6B7280",
-            border: "1px solid rgba(239,68,68,0.1)",
-            borderRadius: 10,
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 500,
-            fontFamily: "'Inter', sans-serif",
+            width: 260,
+            background: "rgba(13,17,23,0.9)",
+            backdropFilter: "blur(20px)",
+            borderRight: "1px solid rgba(124,110,250,0.1)",
             display: "flex",
-            alignItems: "center",
-            gap: 10,
+            flexDirection: "column",
+            padding: "20px 12px",
+            gap: 4,
+            position: "relative",
+            zIndex: 1,
+            flexShrink: 0,
           }}
         >
-          <LogOut size={15} />
-          Sign out
-        </button>
-      </motion.div>
+          {/* Logo */}
+          <div style={{ padding: "8px 10px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 32, height: 32,
+              background: "linear-gradient(135deg, #7C6EFA, #A78BFA)",
+              borderRadius: 10,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 12px rgba(124,110,250,0.3)",
+              flexShrink: 0,
+            }}>
+              <MessageCircle size={16} color="white" fill="white" />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.3px" }}>ConnectX</span>
+          </div>
+
+          {/* Profile card */}
+          <motion.div
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            onClick={() => navigate("/profile")}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px",
+              background: "rgba(124,110,250,0.08)",
+              border: "1px solid rgba(124,110,250,0.12)",
+              borderRadius: 12,
+              cursor: "pointer",
+              marginBottom: 8,
+            }}
+          >
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="avatar" style={{ width: 36, height: 36, borderRadius: "50%", border: "2px solid rgba(124,110,250,0.4)", flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                {getInitials(profile?.display_name || "")}
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 13, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{profile?.display_name || "..."}</p>
+              <p style={{ margin: 0, color: "#6B7280", fontSize: 11 }}>@{profile?.username || "..."}</p>
+            </div>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", animation: "pulse-dot 2.5s ease-in-out infinite", flexShrink: 0 }} />
+          </motion.div>
+
+          {/* Nav label */}
+          <p style={{ color: "#374151", fontSize: 10, fontWeight: 600, letterSpacing: "1px", textTransform: "uppercase", padding: "4px 12px 2px", margin: 0 }}>Menu</p>
+
+          {/* Nav items */}
+          {navItems.map((item, i) => {
+            const Icon = item.icon;
+            const isActive = activeNav === item.path;
+            return (
+              <motion.button
+                key={item.label}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + i * 0.07, duration: 0.35 }}
+                onClick={() => { setActiveNav(item.path); navigate(item.path); }}
+                className="nav-btn"
+                style={{
+                  padding: "10px 12px",
+                  background: isActive ? "rgba(124,110,250,0.14)" : "transparent",
+                  color: isActive ? "#A78BFA" : "#9CA3AF",
+                  border: isActive ? "1px solid rgba(124,110,250,0.2)" : "1px solid transparent",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: 13,
+                  fontWeight: isActive ? 600 : 400,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  fontFamily: "'Inter', sans-serif",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ display:"flex", alignItems:"center", gap: 10 }}>
+                  <Icon size={16} />
+                  {item.label}
+                </span>
+                {item.badge > 0 && (
+                  <span style={{ background: "#7C6EFA", color: "white", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 6px", minWidth: 16, textAlign: "center" }}>
+                    {item.badge}
+                  </span>
+                )}
+              </motion.button>
+            );
+          })}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Logout */}
+          <button
+            onClick={logout}
+            className="logout-btn"
+            style={{
+              padding: "10px 12px",
+              background: "transparent",
+              color: "#6B7280",
+              border: "1px solid rgba(239,68,68,0.1)",
+              borderRadius: 10,
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 500,
+              fontFamily: "'Inter', sans-serif",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <LogOut size={15} />
+            Sign out
+          </button>
+        </motion.div>
+      )}
 
       {/* ── MAIN PANEL ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1, minHeight: 0 }}>
 
         {/* Header */}
         <motion.div
@@ -362,22 +390,53 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
           style={{
-            padding: "16px 16px 12px",
+            padding: isMobile ? "14px 14px 10px" : "16px 16px 12px",
             borderBottom: "1px solid rgba(124,110,250,0.08)",
             display: "flex",
             flexDirection: "column",
-            gap: 14,
+            gap: 12,
             background: "rgba(8,11,20,0.6)",
             backdropFilter: "blur(12px)",
+            flexShrink: 0,
           }}
         >
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.4px" }}>Messages</h1>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap: 10 }}>
+            {isMobile && (
+              <div style={{
+                width: 30, height: 30,
+                background: "linear-gradient(135deg, #7C6EFA, #A78BFA)",
+                borderRadius: 9,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 4px 12px rgba(124,110,250,0.3)",
+                flexShrink: 0,
+              }}>
+                <MessageCircle size={15} color="white" fill="white" />
+              </div>
+            )}
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 className="header-title" style={{ margin: 0, fontSize: isMobile ? 19 : 20, fontWeight: 700, letterSpacing: "-0.4px" }}>Messages</h1>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: "#4B5563" }}>
                 {conversations.length > 0 ? `${conversations.length} conversation${conversations.length !== 1 ? "s" : ""}` : "No conversations yet"}
               </p>
             </div>
+
+            {isMobile && (
+              <motion.div
+                whileTap={{ scale: 0.93 }}
+                onClick={() => navigate("/profile")}
+                style={{ flexShrink: 0, cursor: "pointer", position: "relative" }}
+              >
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="avatar" style={{ width: 34, height: 34, borderRadius: "50%", border: "2px solid rgba(124,110,250,0.4)" }} />
+                ) : (
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: 12, fontWeight: 600 }}>
+                    {getInitials(profile?.display_name || "")}
+                  </div>
+                )}
+                <div style={{ position:"absolute", bottom:-1, right:-1, width: 9, height: 9, borderRadius:"50%", background:"#34D399", border:"2px solid #080B14" }} />
+              </motion.div>
+            )}
           </div>
 
           {/* Search */}
@@ -396,20 +455,20 @@ export default function Home() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search conversations..."
-              style={{ background:"transparent", border:"none", color:"white", fontSize:13, outline:"none", flex:1, fontFamily:"'Inter',sans-serif" }}
+              style={{ background:"transparent", border:"none", color:"white", fontSize:13, outline:"none", flex:1, fontFamily:"'Inter',sans-serif", minWidth: 0 }}
             />
           </div>
         </motion.div>
 
         {/* Conversations list */}
-        <div style={{ flex: 1, overflowY: "auto" }}>
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: isMobile ? 70 : 0 }}>
 
           {/* Loading */}
           {loadingChats && (
             <div style={{ display:"flex", flexDirection:"column", gap:1, padding:"8px 0" }}>
               {[1,2,3,4].map((i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px" }}>
-                  <div style={{ width:48, height:48, borderRadius:"50%", background:"rgba(255,255,255,0.04)", flexShrink:0, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
+                <div key={i} style={{ display:"flex", alignItems:"center", gap: isMobile ? 12 : 14, padding: isMobile ? "12px 14px" : "14px 24px" }}>
+                  <div style={{ width: isMobile ? 44 : 48, height: isMobile ? 44 : 48, borderRadius:"50%", background:"rgba(255,255,255,0.04)", flexShrink:0, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
                   <div style={{ flex:1, display:"flex", flexDirection:"column", gap:8 }}>
                     <div style={{ height:13, width:"40%", background:"rgba(255,255,255,0.04)", borderRadius:6, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
                     <div style={{ height:11, width:"65%", background:"rgba(255,255,255,0.03)", borderRadius:6, animation:"pulse-dot 1.5s ease-in-out infinite" }} />
@@ -465,7 +524,7 @@ export default function Home() {
                 className="chat-row"
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
-                  padding: "11px 16px",
+                  padding: isMobile ? "11px 14px" : "11px 16px",
                   cursor: "pointer",
                   borderBottom: "1px solid rgba(255,255,255,0.03)",
                   position: "relative",
@@ -474,9 +533,9 @@ export default function Home() {
                 {/* Avatar */}
                 <div style={{ position:"relative", flexShrink:0 }}>
                   {c.otherUser?.avatar_url ? (
-                    <img src={c.otherUser.avatar_url} style={{ width:48, height:48, borderRadius:"50%", display:"block" }} />
+                    <img src={c.otherUser.avatar_url} style={{ width: isMobile ? 46 : 48, height: isMobile ? 46 : 48, borderRadius:"50%", display:"block" }} />
                   ) : (
-                    <div style={{ width:48, height:48, borderRadius:"50%", background:"linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:600 }}>
+                    <div style={{ width: isMobile ? 46 : 48, height: isMobile ? 46 : 48, borderRadius:"50%", background:"linear-gradient(135deg,#7C6EFA,#A78BFA)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:600 }}>
                       {getInitials(c.otherUser?.display_name || "?")}
                     </div>
                   )}
@@ -485,7 +544,7 @@ export default function Home() {
 
                 {/* Text */}
                 <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
-                  <p style={{ margin:"0 0 3px", fontWeight: c.unreadCount > 0 ? 700 : 500, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textAlign:"left" }}>
+                  <p style={{ margin:"0 0 3px", fontWeight: c.unreadCount > 0 ? 700 : 500, fontSize: isMobile ? 13.5 : 14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textAlign:"left" }}>
                     {c.otherUser?.display_name || "Unknown"}
                   </p>
                   <p style={{
@@ -496,11 +555,7 @@ export default function Home() {
                     whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
                     textAlign:"left",
                   }}>
-                    {c.lastMessage ? (
-                      c.lastMessage.type === "sticker" ? "🖼️ Sticker" : c.lastMessage.content
-                    ) : (
-                      "No messages yet"
-                    )}
+                    {c.lastMessage?.content || "No messages yet"}
                   </p>
                 </div>
 
@@ -516,7 +571,7 @@ export default function Home() {
                       {c.unreadCount}
                     </span>
                   ) : (
-                    <ChevronRight size={13} color="#1F2937" />
+                    !isMobile && <ChevronRight size={13} color="#1F2937" />
                   )}
                 </div>
               </motion.div>
@@ -535,6 +590,72 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* ── MOBILE BOTTOM NAV ── */}
+      {isMobile && (
+        <motion.div
+          initial={{ y: 60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          style={{
+            position: "fixed",
+            bottom: 0, left: 0, right: 0,
+            background: "rgba(13,17,23,0.97)",
+            backdropFilter: "blur(20px)",
+            borderTop: "1px solid rgba(124,110,250,0.12)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-around",
+            padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
+            zIndex: 10,
+          }}
+        >
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeNav === item.path;
+            return (
+              <button
+                key={item.label}
+                onClick={() => { setActiveNav(item.path); navigate(item.path); }}
+                className="bottom-nav-btn"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "6px 14px",
+                  position: "relative",
+                  flex: 1,
+                }}
+              >
+                <div style={{ position: "relative" }}>
+                  <Icon size={20} color={isActive ? "#A78BFA" : "#4B5563"} fill={isActive ? "rgba(124,110,250,0.15)" : "none"} />
+                  {item.badge > 0 && (
+                    <span style={{ position:"absolute", top:-4, right:-6, background:"#7C6EFA", color:"white", fontSize:9, fontWeight:700, borderRadius:99, padding:"1px 5px", minWidth:14, textAlign:"center", border:"1.5px solid #0D1117" }}>
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: isActive ? 600 : 400, color: isActive ? "#A78BFA" : "#4B5563" }}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Logout as part of bottom nav */}
+          <button
+            onClick={logout}
+            style={{ background:"transparent", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"6px 14px", flex:1 }}
+          >
+            <LogOut size={20} color="#4B5563" />
+            <span style={{ fontSize:10, color:"#4B5563" }}>Logout</span>
+          </button>
+        </motion.div>
+      )}
     </div>
   );
 }
