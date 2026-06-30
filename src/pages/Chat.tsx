@@ -39,6 +39,13 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -277,7 +284,7 @@ export default function Chat() {
         initial={{ opacity:0, y:-12 }}
         animate={{ opacity:1, y:0 }}
         transition={{ duration:0.4, ease:[0.22,1,0.36,1] }}
-        style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"rgba(13,17,23,0.95)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(124,110,250,0.08)", flexShrink:0 }}
+        style={{ display:"flex", alignItems:"center", gap:12, padding: isMobile ? "12px 14px" : "14px 20px", background:"rgba(13,17,23,0.95)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(124,110,250,0.08)", flexShrink:0 }}
       >
         <motion.button
           whileHover={{ scale:1.05 }} whileTap={{ scale:0.95 }}
@@ -305,7 +312,7 @@ export default function Chat() {
       </motion.div>
 
       {/* ── MESSAGES ── */}
-      <div style={{ flex:1, overflowY:"auto", padding:"16px 20px", display:"flex", flexDirection:"column", gap:4 }}>
+      <div style={{ flex:1, overflowY:"auto", padding: isMobile ? "12px 12px" : "16px 20px", display:"flex", flexDirection:"column", gap:4 }}>
         {messages.length === 0 && (
           <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:0.3 }}
             style={{ textAlign:"center", marginTop:60, display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
@@ -345,7 +352,7 @@ export default function Chat() {
                   onTouchEnd={handleTouchEnd}
                   style={{ alignSelf: isMine ? "flex-end" : "flex-start", display:"flex", justifyContent: isMine ? "flex-end" : "flex-start", marginTop:2, cursor:"pointer" }}
                 >
-                  <img src={msg.media_url} alt="sticker" style={{ width:110, height:110, objectFit:"cover", borderRadius:16, border: msg._failed ? "2px solid #F87171" : "1px solid rgba(255,255,255,0.06)" }} />
+                  <img src={msg.media_url} alt="sticker" style={{ width: isMobile ? 92 : 110, height: isMobile ? 92 : 110, objectFit:"cover", borderRadius:16, border: msg._failed ? "2px solid #F87171" : "1px solid rgba(255,255,255,0.06)" }} />
                 </motion.div>
               )}
 
@@ -361,7 +368,7 @@ export default function Chat() {
                   style={{ display:"flex", justifyContent: isMine ? "flex-end" : "flex-start", marginTop:2 }}
                 >
                   <div style={{
-                    maxWidth:"65%",
+                    maxWidth: isMobile ? "82%" : "65%",
                     background: msg._failed
                       ? "rgba(239,68,68,0.15)"
                       : isMine
@@ -474,7 +481,7 @@ export default function Chat() {
               exit={{ opacity:0, scale:0.93, y:16 }}
               transition={{ duration:0.25, ease:[0.22,1,0.36,1] }}
               onClick={(e) => e.stopPropagation()}
-              style={{ background:"rgba(13,17,23,0.98)", backdropFilter:"blur(24px)", border:"1px solid rgba(124,110,250,0.15)", borderRadius:20, width:320, maxHeight:"60vh", overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:"0 32px 64px rgba(0,0,0,0.7)" }}
+              style={{ background:"rgba(13,17,23,0.98)", backdropFilter:"blur(24px)", border:"1px solid rgba(124,110,250,0.15)", borderRadius: isMobile ? 20 : 20, width: isMobile ? "calc(100vw - 40px)" : 320, maxWidth: 320, maxHeight:"60vh", overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:"0 32px 64px rgba(0,0,0,0.7)" }}
             >
               <div style={{ padding:"18px 20px 12px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <h3 style={{ margin:0, fontSize:15, fontWeight:700 }}>Forward to</h3>
@@ -542,7 +549,7 @@ export default function Chat() {
               ))}
             </div>
 
-            <div style={{ padding: pickerTab === "emoji" ? "8px 0 0" : "12px 16px 16px", maxHeight:320, overflowY:"auto" }}>
+            <div style={{ padding: pickerTab === "emoji" ? "8px 0 0" : "12px 16px 16px", maxHeight: isMobile ? 260 : 320, overflowY:"auto" }}>
               {pickerTab === "emoji" && (
                 <EmojiPicker onEmojiClick={onEmojiClick} theme={Theme.DARK} width="100%" height={300} searchDisabled={false} skinTonesDisabled={false} previewConfig={{ showPreview: false }} />
               )}
@@ -602,7 +609,7 @@ export default function Chat() {
       )}
 
       {/* ── INPUT BAR ── */}
-      <div style={{ display:"flex", gap:8, padding:"12px 16px", background:"rgba(13,17,23,0.98)", backdropFilter:"blur(20px)", borderTop:"1px solid rgba(124,110,250,0.08)", alignItems:"center", opacity: isFriends ? 1 : 0.45, flexShrink:0 }}>
+      <div style={{ display:"flex", gap:8, padding: isMobile ? "10px 10px calc(10px + env(safe-area-inset-bottom))" : "12px 16px", background:"rgba(13,17,23,0.98)", backdropFilter:"blur(20px)", borderTop:"1px solid rgba(124,110,250,0.08)", alignItems:"center", opacity: isFriends ? 1 : 0.45, flexShrink:0 }}>
         <motion.button whileHover={{ scale:1.05 }} whileTap={{ scale:0.95 }}
           onClick={() => isFriends && togglePicker("emoji")} disabled={!isFriends}
           style={{ width:38, height:38, background: pickerTab === "emoji" ? "rgba(124,110,250,0.18)" : "rgba(255,255,255,0.04)", border: pickerTab === "emoji" ? "1px solid rgba(124,110,250,0.3)" : "1px solid rgba(255,255,255,0.06)", borderRadius:10, cursor: isFriends ? "pointer" : "not-allowed", display:"flex", alignItems:"center", justifyContent:"center", color: pickerTab === "emoji" ? "#A78BFA" : "#4B5563", transition:"all 0.2s ease", flexShrink:0 }}>
