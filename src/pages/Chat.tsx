@@ -143,9 +143,11 @@ export default function Chat() {
       .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
         if (other?.user_id) checkFriendshipStatus(userId, other.user_id);
       })
-      .subscribe();
+      .subscribe((status, err) => {
+    console.log("Realtime subscription status:", status, err);
+  });
 
-    return channel;
+return channel;
   };
 
   const sendMessage = async () => {
