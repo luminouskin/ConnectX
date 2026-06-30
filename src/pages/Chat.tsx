@@ -129,8 +129,9 @@ export default function Chat() {
 
     console.log("Setting up realtime filter for conversationId:", conversationId);
     const channel = supabase.channel(`chat-${conversationId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, async (payload) => {
-        if (payload.new.sender_id === userId) return;
+  .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, async (payload) => {
+    console.log("RAW REALTIME EVENT RECEIVED:", payload);
+            if (payload.new.sender_id === userId) return;
         setMessages((prev) => {
           if (prev.some((m) => m.id === payload.new.id)) return prev;
           return [...prev, { ...payload.new, sender: null, _needsSenderFetch: true }];
