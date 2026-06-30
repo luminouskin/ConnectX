@@ -126,6 +126,8 @@ export default function Chat() {
     loadMyConversations(userId);
     await markAsRead(userId);
 
+
+    console.log("Setting up realtime filter for conversationId:", conversationId);
     const channel = supabase.channel(`chat-${conversationId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, async (payload) => {
         if (payload.new.sender_id === userId) return;
